@@ -1,0 +1,114 @@
+1.	// Question 1: List total number of customers living in California  
+2.	db.customers.find({District: "California"}).count();  
+3.	  
+4.	// Question 2: List all movies that are rated PG-13  
+5.	db.films.find({Rating: "PG-13"});  
+6.	  
+7.	// Question 3: List the count of movies by category  
+8.	db.films.aggregate([  
+9.	    {"$group" : {_id: "$Category", count:{$sum:1}}}]);  
+10.	      
+11.	// Question 4: Find the top 2 movies with movie length greater than 25 mins OR which has commentaries as a special feature  
+12.	// "Top 2" seems to be left open to interpretation  
+13.	// Let's convert Length from string to integer  
+14.	db.films.find().forEach( function (i){  
+15.	    i.Length = parseInt(i.Length);  
+16.	    db.films.save(i);  
+17.	});  
+18.	  
+19.	// To avoid difficulty working with field names that have spaces, let's remove space in germane field names  
+20.	db.films.updateMany({}, {$rename: {"Special Features":"SpecialFeatures"}});  
+21.	db.films.updateMany({}, {$rename: {"Rental Duration":"RentalDuration"}});  
+22.	db.films.updateMany({}, {$rename: {"Replacement Cost":"ReplacementCost"}});  
+23.	  
+24.	// To search SpecialFeatures, we need to create a text index  
+25.	db.films.createIndex({SpecialFeatures: "text"});  
+26.	  
+27.	// Let's search for Commentaries  
+28.	// The below shows that there are 539 films that have commentaries  
+29.	db.films.find({  
+30.	    $text: {$search: "Commentaries"}  
+31.	});  
+32.	  
+33.	// Let's also find films that are longer than 25 minutes  
+34.	// The below shows that there are 1000 films that are longer than 25 minutes  
+35.	db.films.find({Length: {$gt: 25}});  
+36.	  
+37.	// With the above in mind, and given that "top 2" has not been defined,  
+38.	// it would be appropriate to pick any two films that are in both groups  
+39.	  
+40.	  
+41.	// Question 5: Find the top 10 customers based on number of rentals  
+42.	db.customers.aggregate([  
+43.	    {"$group" : {_id: "$Rentals", count:{$sum:1}}},  
+44.	    {$sort:{"count":-1}}  
+45.	    ]).limit(10);  
+46.	  
+47.	  
+48.	// Question 6: Provide 5 additional queries and indicate thspecific business use cases they address  
+49.	  
+50.	// Q6.1 How many customers are from each country? This could inform one's marketing strategy.  
+51.	db.customers.aggregate([  
+52.	    {"$group" : {_id: "$Country", count:{$sum:1}}},  
+53.	    {$sort:{"count":-1}}]);  
+54.	  
+55.	// Q6.2 Find the average Replacement Cost for each rating. The idea is that this could become part of one's inventory strategy.  
+56.	// This converts the Replacement Cost from string to integer  
+57.	db.films.find().forEach( function (i){  
+58.	    i.ReplacementCost = parseInt(i.ReplacementCost);  
+59.	    db.films.save(i);  
+60.	});  
+61.	  
+62.	// For example, the below shows that PG-13 films have the highest average Replacement Cost.  
+63.	// With this in mind, if one's store is more theft-prone than another, one might consider carrying fewer PG-13 and more PG  
+64.	db.films.aggregate([  
+65.	    {"$group" : {_id: "$Rating", avgAmount:{$avg:"$ReplacementCost"}}},  
+66.	    {$sort:{avgAmount:-1}}]);  
+67.	      
+68.	// Q6.3 To improve a video store's SEO, it would be valuable to understand which terms are most popular in film descriptions  
+69.	// One could take these terms and, combined with a term like "film", appropriately prioritize SEO spending  
+70.	var map = function() {    
+71.	    var summary = this.Description;  
+72.	    if (summary) {   
+73.	        // transform to lowercase  
+74.	        summary = summary.toLowerCase().split(" ");   
+75.	        for (var i = summary.length - 1; i >= 0; i--) {  
+76.	            if (summary[i])  {        
+77.	               emit(summary[i], 1);   
+78.	            }  
+79.	        }  
+80.	    }  
+81.	};  
+82.	  
+83.	var reduce = function( key, values ) {      
+84.	    var count = 0;      
+85.	    values.forEach(function(v) {              
+86.	        count +=v;      
+87.	    });  
+88.	    return count;  
+89.	}  
+90.	  
+91.	db.films.mapReduce(map, reduce, {out: "word_count"})  
+92.	  
+93.	db.word_count.find().sort({value:-1})  
+94.	  
+95.	  
+96.	// Q6.4 Consider this hypothesis: These days, films can be replaced from myriad sources (department stores, online retailers, etc.)  
+97.	// and as a result the costs could reasonably be expected to be variable. Whereas in the past replacement sources might have been limited.  
+98.	// With this in mind, one could hypothesize that replacement costs might be designed to incentivize against renting a film too long  
+99.	// In which case, are there differences by replacement cost in rental duration  
+100.	db.films.aggregate([  
+101.	    {"$group" : {_id: "$RentalDuration", avgAmount:{$avg:"$ReplacementCost"}}},  
+102.	    {$sort:{avgAmount:-1}}]);  
+103.	// This suggests that the average Replacement Cost by Rental Duration isn't meaningfully different.  
+104.	// With this, the hypothesis is disproven.  
+105.	  
+106.	  
+107.	// Q6.5 Viral challenges are all the rage, and during a pandemic there is an exciting way for video stores to stay relevant  
+108.	// By creating a viral challenge for people to participate in, one can generate demand while gaining cultural cache  
+109.	// Introducing: the 24 hour challenge  
+110.	// The idea is to watch the same film for 24 hours and Tweet updated thoughts each time you watch  
+111.	// However, it would make sense for this to be a film that divides equally into 1440 minutes  
+112.	// Therefore, let's find films that are 60, 90, or 120 minutes  
+113.	  
+114.	db.films.find({ $or: [{Length: 60}, {Length: 90}, {Length: 120}]});  
